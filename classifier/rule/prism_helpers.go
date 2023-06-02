@@ -1,64 +1,61 @@
 package rule
 
 import (
-	"fmt"
-
 	"github.com/bsm/arff"
 )
 
-type Attribute struct {
+func readFile(path string) *arff.Reader {
+	f, err := arff.Open(path)
+	if err != nil {
+		panic(err.Error())
+	}
+	return f
+}
+
+type attribute struct {
 	name   string
 	values []string
 }
 
-type DataSet struct {
+type trainingSet struct {
 	records     [][]any
-	class       Attribute
-	attributes  []Attribute
-	pairs       int
+	class       attribute
+	attributes  []attribute
 	dist        map[any]int
 	attrToIndex map[any]int
 }
 
-func readFile(path string) (dataset DataSet, err error) {
-	fmt.Println("reading file...")
-	data, err := arff.Open(path)
+func createTrainingSet(f *arff.Reader) trainingSet {
+	ts := trainingSet{}
+	l := len(f.Attributes)
+	ts.class.name = f.Attributes[l-1].Name
+	ts.class.values = f.Attributes[l-1].NominalValues
+	ts.dist = make(map[any]int)
+	ts.attrToIndex = make(map[any]int)
+	for _, v := range ts.class.values {
+		ts.dist[v] = 0
+	}
+	for i := 0; i < l-1; i++ {
+		a := f.Attributes[i]
+		ts.attrToIndex[a.Name] = i
+		ts.attributes = append(ts.attributes, attribute{name: a.Name, values: a.NominalValues})
+	}
+	for f.Next() {
+		vs := f.Row().Values
+		ts.records = append(ts.records, vs)
+		ts.dist[vs[len(vs)-1]] += 1
+	}
+	err := f.Err()
 	if err != nil {
-		return
+		panic(err.Error())
 	}
-	defer data.Close()
-
-	attributesLenghth := len(data.Attributes)
-	dataset.class.name = data.Attributes[attributesLenghth-1].Name
-	dataset.class.values = data.Attributes[attributesLenghth-1].NominalValues
-	dataset.dist = make(map[any]int)
-	dataset.attrToIndex = make(map[any]int)
-	for _, v := range dataset.class.values {
-		dataset.dist[v] = 0
-	}
-	for index := 0; index < attributesLenghth-1; index++ {
-		attr := data.Attributes[index]
-		dataset.attrToIndex[attr.Name] = index
-		dataset.pairs += len(attr.NominalValues)
-		dataset.attributes = append(dataset.attributes, Attribute{name: attr.Name, values: attr.NominalValues})
-	}
-
-	for data.Next() {
-		values := data.Row().Values
-		dataset.records = append(dataset.records, values)
-		dataset.dist[values[len(values)-1]] += 1
-	}
-	err = data.Err()
-	if err != nil {
-		return
-	}
-	return
+	return ts
 }
 
 type attrValueInfo map[any]map[any][]int
 
 // assuming the first one is valid, second one total
-func initAttrInfo(attrs []Attribute) attrValueInfo {
+func initAttrsInfo(attrs []attribute) attrValueInfo {
 	res := make(attrValueInfo)
 	for _, attr := range attrs {
 		res[attr.name] = make(map[any][]int)
@@ -69,12 +66,12 @@ func initAttrInfo(attrs []Attribute) attrValueInfo {
 	return res
 }
 
-type Condition struct {
+type condition struct {
 	attribute any
 	value     any
 }
 
-type Rule []Condition
+type Rule []condition
 
 // func findNewRule() {}
 
@@ -85,35 +82,35 @@ type newCondition struct {
 	covered int
 }
 
-func findNewCondition(under []int, records [][]any, table attrValueInfo, attrs []Attribute, class string) newCondition {
+func findNewCondition(under []int, records [][]any, table attrValueInfo, attrs []attribute, class string) newCondition {
 	for _, rec := range under {
-		for index := 0; index < len(records[rec])-1; index++ {
-			if len(table[attrs[index].name]) != 0 {
-				table[attrs[index].name][records[rec][index]][1] += 1
+		for i := 0; i < len(records[rec])-1; i++ {
+			if len(table[attrs[i].name]) != 0 {
+				table[attrs[i].name][records[rec][i]][1] += 1
 				if records[rec][len(records[rec])-1] == class {
-					table[attrs[index].name][records[rec][index]][0] += 1
+					table[attrs[i].name][records[rec][i]][0] += 1
 				}
 			}
 		}
 	}
-	bestRatio := newCondition{"", "", 0, 0}
+	best := newCondition{"", "", 0, 0}
 	for attr, values := range table {
 		for value, numbers := range values {
-			var newRatio float32 = float32(numbers[0]) / float32(numbers[1])
-			if newRatio > bestRatio.ratio {
-				bestRatio.attr = attr
-				bestRatio.val = value
-				bestRatio.ratio = newRatio
-				bestRatio.covered = numbers[1]
-			} else if newRatio == bestRatio.ratio {
-				if numbers[1] > bestRatio.covered {
-					bestRatio.attr = attr
-					bestRatio.val = value
-					bestRatio.ratio = newRatio
-					bestRatio.covered = numbers[1]
+			var new float32 = float32(numbers[0]) / float32(numbers[1])
+			if new > best.ratio {
+				best.attr = attr
+				best.val = value
+				best.ratio = new
+				best.covered = numbers[1]
+			} else if new == best.ratio {
+				if numbers[1] > best.covered {
+					best.attr = attr
+					best.val = value
+					best.ratio = new
+					best.covered = numbers[1]
 				}
 			}
 		}
 	}
-	return bestRatio
+	return best
 }

@@ -5,54 +5,54 @@ import (
 )
 
 func Prism(path string) {
-	dataset, err := readFile(path)
-	if err != nil {
-		panic(err.Error())
-	}
+	fmt.Println("reading file...")
+	f := readFile(path)
+	ts := createTrainingSet(f)
+	f.Close()
 
 	rules := make(map[string][]Rule)
-	for _, class := range dataset.class.values {
+	for _, class := range ts.class.values {
 		fmt.Println("finding rules for class " + class)
 		rules[class] = nil
-		instancesWithThisClass := []int{}
-		for i := 0; i < len(dataset.records); i++ {
-			if dataset.records[i][len(dataset.records[i])-1] == class {
-				instancesWithThisClass = append(instancesWithThisClass, i)
+		recs := []int{}
+		for i := 0; i < len(ts.records); i++ {
+			if ts.records[i][len(ts.records[i])-1] == class {
+				recs = append(recs, i)
 			}
 		}
 
-		for len(instancesWithThisClass) != 0 {
-			var newRule Rule
-			isPure := false
-			coveredByRule := []int{}
-			for i := 0; i < len(dataset.records); i++ {
-				coveredByRule = append(coveredByRule, i)
+		for len(recs) != 0 {
+			var rule Rule
+			pure := false
+			cov := []int{}
+			for i := 0; i < len(ts.records); i++ {
+				cov = append(cov, i)
 			}
-			attributesInfoGain := initAttrInfo(dataset.attributes)
-			for !(isPure || len(newRule) == len(dataset.attributes)) {
-				newCondition := findNewCondition(coveredByRule, dataset.records, attributesInfoGain, dataset.attributes, class)
-				newRule = append(newRule, Condition{attribute: newCondition.attr, value: newCondition.val})
-				if newCondition.ratio == 1 {
-					isPure = true
+			attrsInfo := initAttrsInfo(ts.attributes)
+			for !(pure || len(rule) == len(ts.attributes)) {
+				nc := findNewCondition(cov, ts.records, attrsInfo, ts.attributes, class)
+				rule = append(rule, condition{attribute: nc.attr, value: nc.val})
+				if nc.ratio == 1 {
+					pure = true
 				}
-				delete(attributesInfoGain, newCondition.attr)
-				for _, values := range attributesInfoGain {
+				delete(attrsInfo, nc.attr)
+				for _, values := range attrsInfo {
 					for _, nums := range values {
 						nums[0] = 0
 						nums[1] = 0
 					}
 				}
-				filteredUnderConditions := []int{}
-				for _, rec := range coveredByRule {
-					if dataset.records[rec][dataset.attrToIndex[newCondition.attr]] == newCondition.val {
-						filteredUnderConditions = append(filteredUnderConditions, rec)
+				filtered := []int{}
+				for _, rec := range cov {
+					if ts.records[rec][ts.attrToIndex[nc.attr]] == nc.val {
+						filtered = append(filtered, rec)
 					}
 				}
-				coveredByRule = filteredUnderConditions
+				cov = filtered
 			}
 			//remove covered instances by the rule
-			for _, i := range coveredByRule {
-				instancesWithThisClass[i] = -1
+			for _, i := range cov {
+				recs[i] = -1
 			}
 			//add new rule to rules
 		}
